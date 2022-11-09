@@ -660,54 +660,6 @@
     }
   },
   {
-    "name": "SAR",
-    "code": {
-      "asm": "PUSH1 2\nPUSH1 1\nSAR",
-      "bin": "600260011d"
-    },
-    "expect": {
-      "stack": [
-        "0x1"
-      ]
-    }
-  },
-  {
-    "name": "SAR (fills 1s)",
-    "code": {
-      "asm": "PUSH32 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00\nPUSH1 4\nSAR",
-      "bin": "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff0060041d"
-    },
-    "expect": {
-      "stack": [
-        "0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff0"
-      ]
-    }
-  },
-  {
-    "name": "SAR (too large)",
-    "code": {
-      "asm": "PUSH32 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00\nPUSH4 0xFFFFFFFF\nSAR",
-      "bin": "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff0063ffffffff1d"
-    },
-    "expect": {
-      "stack": [
-        "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
-      ]
-    }
-  },
-  {
-    "name": "SAR (positive, too large)",
-    "code": {
-      "asm": "PUSH32 0x0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00\nPUSH4 0xFFFFFFFF\nSAR",
-      "bin": "7f0fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff0063ffffffff1d"
-    },
-    "expect": {
-      "stack": [
-        "0x0"
-      ]
-    }
-  },
-  {
     "name": "NOT",
     "code": {
       "asm": "PUSH1 0x0f\nNOT",

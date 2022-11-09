@@ -125,6 +125,55 @@ export default function evm(code: Uint8Array, tx: any, block: any, state: any) {
                         : smodulo;
                 stack.unshift(smodulo);
                 break;
+            case opcode == op.ADDMOD:
+                const amAdd1: bigint | undefined = stack.shift();
+                const amAdd2: bigint | undefined = stack.shift();
+                const amDenominator: bigint | undefined = stack.shift();
+                if (Number(amDenominator) == 0) {
+                    stack.unshift(0n);
+                    break;
+                }
+                if (amAdd1 != null && amAdd2 != null && amDenominator != null) {
+                    const amResult: bigint = (amAdd1 + amAdd2) % amDenominator;
+                    stack.unshift(amResult);
+                }
+                break;
+            case opcode == op.MULMOD:
+                const mmMult1: bigint | undefined = stack.shift();
+                const mmMult2: bigint | undefined = stack.shift();
+                const mmDenominator: bigint | undefined = stack.shift();
+                if (Number(mmDenominator) == 0) {
+                    stack.unshift(0n);
+                    break;
+                }
+                if (mmMult1 != null && mmMult2 != null && mmDenominator != null) {
+                    const mmResult: bigint = (mmMult1 * mmMult2) % mmDenominator;
+                    stack.unshift(mmResult);
+                }
+                break;
+            case opcode == op.EXP:
+                const expBase: bigint | undefined = stack.shift();
+                const expExponent: bigint | undefined = stack.shift();
+                if (expBase != null && expExponent != null) {
+                    const expResult: bigint = expBase ** expExponent % (UINT256_MAX + 1n);
+                    stack.unshift(expResult);
+                }
+                break;
+            case opcode == op.SIGNEXTEND:
+                const seSize: bigint | undefined = stack.shift();
+                const seValue: bigint | undefined = stack.shift();
+                if (seSize != null && seValue != null) {
+                    let hexCount: number = Number(seSize + 1n) * 2;
+                    let hexValue: string = seValue.toString(16).padStart(hexCount, "0");
+                    if (hexValue[0] == "f") {
+                        hexValue = "0x" + seValue.toString(16).padStart(64, "f");
+                        stack.unshift(BigInt(hexValue));
+                    } else {
+                        hexValue = "0x" + seValue.toString(16).padStart(64, "0");
+                        stack.unshift(BigInt(hexValue));
+                    }
+                }
+                break;
             case opcode == op.LT:
                 let lt1: any = stack.shift();
                 let lt2: any = stack.shift();
@@ -234,6 +283,40 @@ export default function evm(code: Uint8Array, tx: any, block: any, state: any) {
                     stack.unshift(BigInt(byteItem));
                     break;
                 }
+            case opcode == op.SHL:
+                const shlShift: bigint | undefined = stack.shift();
+                const shlValue: bigint | undefined = stack.shift();
+                if (shlShift != null && shlValue != null) {
+                    if (shlShift > 255) {
+                        stack.unshift(0n);
+                        break;
+                    }
+                    let shlResult = shlValue << shlShift;
+                    if (shlResult.toString(16).length > 64) {
+                        shlResult = BigInt(
+                            "0x" + shlResult.toString(16).slice(shlResult.toString(16).length - 64)
+                        );
+                    }
+                    stack.unshift(shlResult);
+                }
+                break;
+            case opcode == op.SHR:
+                const shrShift: bigint | undefined = stack.shift();
+                const shrValue: bigint | undefined = stack.shift();
+                if (shrShift != null && shrValue != null) {
+                    if (shrShift > 255) {
+                        stack.unshift(0n);
+                        break;
+                    }
+                    let shrResult = shrValue >> shrShift;
+                    if (shrResult.toString(16).length > 64) {
+                        shrResult = BigInt(
+                            "0x" + shrResult.toString(16).slice(shrResult.toString(16).length - 64)
+                        );
+                    }
+                    stack.unshift(shrResult);
+                }
+                break;
             case opcode == op.ADDRESS:
                 stack.unshift(BigInt(tx.to));
                 break;
@@ -302,7 +385,6 @@ export default function evm(code: Uint8Array, tx: any, block: any, state: any) {
                     }
                     data = data.slice(Number(ccOffset * 2n));
                     data = "0x" + data.padEnd(64, "0");
-                    console.log(data);
                     memory.store32(Number(ccDestOffset), BigInt(data));
                 }
                 break;
@@ -326,6 +408,9 @@ export default function evm(code: Uint8Array, tx: any, block: any, state: any) {
                 break;
             case opcode == op.CHAINID:
                 stack.unshift(BigInt(block.chainid));
+                break;
+            case opcode == op.BASEFEE:
+                stack.unshift(BigInt(block.basefee));
                 break;
             case opcode == op.POP:
                 const _arg = stack.shift();
