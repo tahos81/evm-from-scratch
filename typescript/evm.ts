@@ -363,9 +363,10 @@ export default function evm(code: Uint8Array, tx: any, block: any, state: any) {
                 const cdcSize: bigint | undefined = stack.shift();
                 if (cdcDestOffset != null && cdcOffset != null && cdcSize != null) {
                     let data: string = tx.data;
-                    data = data.slice(Number(cdcOffset * 2n));
-                    data = "0x" + data.padEnd(64, "0");
-                    memory.store32(Number(cdcDestOffset), BigInt(data));
+                    let offset: number = Number(cdcOffset * 2n);
+                    data = data.slice(offset, offset + Number(cdcSize * 2n));
+                    data = "0x" + data.padEnd(Number(cdcSize * 2n), "0");
+                    memory.store(Number(cdcDestOffset), BigInt(data), Number(cdcSize));
                 }
                 break;
             case opcode == op.CODESIZE:
@@ -383,9 +384,10 @@ export default function evm(code: Uint8Array, tx: any, block: any, state: any) {
                         newHex = newHex.length == 1 ? "0" + newHex : newHex;
                         data = data + newHex;
                     }
-                    data = data.slice(Number(ccOffset * 2n));
-                    data = "0x" + data.padEnd(64, "0");
-                    memory.store32(Number(ccDestOffset), BigInt(data));
+                    let offset: number = Number(ccOffset * 2n);
+                    data = data.slice(offset, offset + Number(ccSize * 2n));
+                    data = "0x" + data.padEnd(Number(ccSize * 2n), "0");
+                    memory.store(Number(ccDestOffset), BigInt(data), Number(ccSize));
                 }
                 break;
             case opcode == op.GASPRICE:
@@ -418,21 +420,21 @@ export default function evm(code: Uint8Array, tx: any, block: any, state: any) {
             case opcode == op.MLOAD:
                 const loadOffset: bigint | undefined = stack.shift();
                 if (loadOffset != null) {
-                    stack.unshift(BigInt("0x" + memory.load(Number(loadOffset))));
+                    stack.unshift(BigInt("0x" + memory.read(Number(loadOffset), 32)));
                 }
                 break;
             case opcode == op.MSTORE:
                 const store32offset: bigint | undefined = stack.shift();
                 const store32value: bigint | undefined = stack.shift();
                 if (store32offset != null && store32value != null) {
-                    memory.store32(Number(store32offset), store32value);
+                    memory.store(Number(store32offset), store32value, 32);
                 }
                 break;
             case opcode == op.MSTORE8:
                 const store1offset: bigint | undefined = stack.shift();
                 const store1value: bigint | undefined = stack.shift();
                 if (store1offset != null && store1value != null) {
-                    memory.store1(Number(store1offset), store1value);
+                    memory.store(Number(store1offset), store1value, 1);
                 }
                 break;
             case opcode == op.JUMP:
@@ -496,58 +498,52 @@ export default function evm(code: Uint8Array, tx: any, block: any, state: any) {
 }
 
 class Memory {
-    memory: Uint8Array;
-    expansionCount: number;
-    bytePerExpansion: number = 32;
+    memory: Uint8Array; //memory is a byte array
+    expansionCount: number; //how many times memory expanded
+    bytePerExpansion: number = 32; //memory expands in 32 bytes
 
     constructor() {
         this.expansionCount = 0;
-        this.memory = new Uint8Array(0);
+        this.memory = new Uint8Array(0); //initially memory is empty
     }
 
+    //read memory from offset to offset + size
     read(offset: number, size: number): string {
-        const requiredExpansion: number = Math.ceil(offset + size / this.bytePerExpansion);
-        this.expand(requiredExpansion);
+        const requiredExpansion: number = Math.ceil((offset + size) / this.bytePerExpansion); //calculate necessary expansion
+        this.expand(requiredExpansion); //expand if necessary
 
-        let index: number = offset;
-        const bound: number = offset + size;
+        let index: number = offset; //start reading from offset
+        const bound: number = offset + size; //read until offset + size
 
-        let item: string = "";
+        let item: string = ""; //empty string to populate
 
         for (index; index < bound; index++) {
-            let newItem = this.memory[index].toString(16);
-            newItem = newItem.length == 1 ? "0" + newItem : newItem;
+            let newItem = this.memory[index].toString(16); //turn byte to hex
+            newItem = newItem.length == 1 ? "0" + newItem : newItem; //"0" -> "00"
             item = item + newItem;
         }
         return item;
     }
 
-    load(offset: number): string {
-        const requiredExpansion: number = Math.ceil(offset / this.bytePerExpansion) + 1;
-        this.expand(requiredExpansion);
+    //write "size" bytes to memory starting from offset
+    store(offset: number, value: bigint, size: number) {
+        const requiredExpansion: number = Math.ceil((offset + size) / this.bytePerExpansion); //calculate necessary expansion
+        this.expand(requiredExpansion); //expand if necessary
 
-        let index: number = offset;
-        const bound: number = offset + 32;
+        let hexValue: string = value.toString(16); //turn to hex string
 
-        let item: string = "";
-
-        for (index; index < bound; index++) {
-            let newItem = this.memory[index].toString(16);
-            newItem = newItem.length == 1 ? "0" + newItem : newItem;
-            item = item + newItem;
+        //manipulate hex string length according to size
+        if (hexValue.length > size * 2) {
+            hexValue = hexValue.slice(hexValue.length - size * 2 + 1);
+        } else if (hexValue.length < size * 2) {
+            hexValue = hexValue.padStart(size * 2, "0");
         }
-        return item;
-    }
 
-    store32(offset: number, value: bigint) {
-        const requiredExpansion: number = Math.ceil(offset / this.bytePerExpansion) + 1;
-        this.expand(requiredExpansion);
+        let valueArray: Uint8Array = hexStringToUint8Array(hexValue);
 
-        let valueArray: Uint8Array = hexStringToUint8Array(value.toString(16).padStart(64, "0"));
-
-        const bound: number = offset + 32;
-        let index: number = offset;
-        let byteIndex: number = 0;
+        let byteIndex: number = 0; //start index for valueArray
+        let index: number = offset; //start index for memory
+        const bound: number = offset + size; //write until offset + size
 
         for (index; index < bound; index++) {
             this.memory[index] = valueArray[byteIndex];
@@ -555,19 +551,13 @@ class Memory {
         }
     }
 
-    store1(offset: number, value: bigint) {
-        const requiredExpansion: number = Math.floor(offset / this.bytePerExpansion) + 1;
-        this.expand(requiredExpansion);
-
-        let valueArray: Uint8Array = hexStringToUint8Array(value.toString(16));
-        let item: number = valueArray[valueArray.length - 1];
-        this.memory[offset] = item;
-    }
-
     expand(requiredExpansion: number) {
-        const placeholderArray: Uint8Array = this.memory;
-        this.expansionCount = requiredExpansion;
-        this.memory = new Uint8Array(this.expansionCount * this.bytePerExpansion);
-        this.memory.set(placeholderArray, 0);
+        //check if expansion is necessary
+        if (requiredExpansion > this.expansionCount) {
+            const placeholderArray: Uint8Array = this.memory;
+            this.expansionCount = requiredExpansion;
+            this.memory = new Uint8Array(this.expansionCount * this.bytePerExpansion); //create new array with appropriate length
+            this.memory.set(placeholderArray, 0); //set old array as the beginning of the new array
+        }
     }
 }
