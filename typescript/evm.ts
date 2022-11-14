@@ -36,6 +36,7 @@ function hexStringToUint8Array(hexString: string) {
 export default function evm(code: Uint8Array, tx: any, block: any, state: any) {
     let stack: bigint[] = [];
     let memory = new Memory();
+    let storage = {};
     let pc = 0;
 
     loop1: while (pc < code.length) {
@@ -459,6 +460,11 @@ export default function evm(code: Uint8Array, tx: any, block: any, state: any) {
             case opcode == op.CHAINID:
                 stack.unshift(BigInt(block.chainid));
                 break;
+            case opcode == op.SELFBALANCE:
+                const selfAddress: string = tx.to;
+                const selfBalance: string = state[selfAddress].balance;
+                stack.unshift(BigInt(selfBalance));
+                break;
             case opcode == op.BASEFEE:
                 stack.unshift(BigInt(block.basefee));
                 break;
@@ -483,6 +489,23 @@ export default function evm(code: Uint8Array, tx: any, block: any, state: any) {
                 const store1value: bigint | undefined = stack.shift();
                 if (store1offset != null && store1value != null) {
                     memory.store(Number(store1offset), store1value, 1);
+                }
+                break;
+            case opcode == op.SLOAD:
+                const loadKey: bigint | undefined = stack.shift();
+                if (loadKey != null) {
+                    if (storage[Number(loadKey)]) {
+                        stack.unshift(storage[Number(loadKey)]);
+                    } else {
+                        stack.unshift(0n);
+                    }
+                }
+                break;
+            case opcode == op.SSTORE:
+                const storeKey: bigint | undefined = stack.shift();
+                const storeValue: bigint | undefined = stack.shift();
+                if (storeKey != null && storeValue != null) {
+                    storage[Number(storeKey)] = storeValue;
                 }
                 break;
             case opcode == op.JUMP:
