@@ -13,7 +13,7 @@
  */
 
 import op from "./opcodes";
-import Keccak from "sha3";
+import keccak256 from "keccak256";
 
 const UINT256_MAX: bigint = 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffn;
 
@@ -257,16 +257,12 @@ export default function evm(code: Uint8Array, tx: any, block: any, state: any) {
             case opcode == op.SHA3:
                 const sha3offset: bigint | undefined = stack.shift();
                 const sha3size: bigint | undefined = stack.shift();
-                stack.unshift(
-                    BigInt("0x29045a592007d0c246ef02c2223570da9522d0cf0f73282c79a1bc8f0bb2c238")
-                );
-                // if (sha3offset != null && sha3size != null) {
-                //     const stringItem: string = memory.read(Number(sha3offset), Number(sha3size));
-                //     const itemToHash: Buffer = Buffer.from(stringItem, "hex");
-                //     const hash: Keccak<256> = new Keccak(256);
-                //     hash.update(itemToHash);
-                //     stack.unshift(BigInt("0x" + hash.digest("hex")));
-                // }
+                if (sha3offset != null && sha3size != null) {
+                    const stringItem: string = memory.read(Number(sha3offset), Number(sha3size));
+                    const itemToHash: Buffer = Buffer.from(stringItem, "hex");
+                    const hash = keccak256(itemToHash);
+                    stack.unshift(BigInt("0x" + hash.toString("hex")));
+                }
                 break;
             case opcode == op.BYTE:
                 const byteOffset: bigint | undefined = stack.shift();
@@ -385,14 +381,66 @@ export default function evm(code: Uint8Array, tx: any, block: any, state: any) {
                         data = data + newHex;
                     }
                     let offset: number = Number(ccOffset * 2n);
-                    data = data.slice(offset, offset + Number(ccSize * 2n));
-                    data = "0x" + data.padEnd(Number(ccSize * 2n), "0");
+                    let size: number = Number(ccSize * 2n);
+                    data = data.slice(offset, offset + size);
+                    data = "0x" + data.padEnd(size, "0");
                     memory.store(Number(ccDestOffset), BigInt(data), Number(ccSize));
                 }
                 break;
             case opcode == op.GASPRICE:
                 stack.unshift(BigInt(tx.gasprice));
                 break;
+            case opcode == op.EXTCODESIZE:
+                const csAddress: bigint | undefined = stack.shift();
+                if (csAddress != null) {
+                    const hexAddress: string = "0x" + csAddress.toString(16);
+                    let codesize: number;
+                    if (state != null) {
+                        codesize = state[hexAddress].code.bin.length;
+                    } else {
+                        codesize = 0;
+                    }
+                    stack.unshift(BigInt(codesize / 2));
+                }
+                break;
+            case opcode == op.EXTCODECOPY:
+                const eccAddress: bigint | undefined = stack.shift();
+                const eccDestOffset: bigint | undefined = stack.shift();
+                const eccOffset: bigint | undefined = stack.shift();
+                const eccSize: bigint | undefined = stack.shift();
+                if (
+                    eccAddress != null &&
+                    eccDestOffset != null &&
+                    eccOffset != null &&
+                    eccSize != null
+                ) {
+                    const hexAddress: string = "0x" + eccAddress.toString(16);
+                    let externalCode: string = "";
+                    if (state != null) {
+                        externalCode = state[hexAddress].code.bin;
+                        let offset: number = Number(eccOffset * 2n);
+                        let size: number = Number(eccSize * 2n);
+                        externalCode = externalCode.slice(offset, offset + Number(eccSize * 2n));
+                        externalCode = "0x" + externalCode.padEnd(size, "0");
+                    }
+                    memory.store(Number(eccDestOffset), BigInt(externalCode), Number(eccSize));
+                }
+                break;
+            case opcode == op.EXTCODEHASH:
+                const echAddress: bigint | undefined = stack.shift();
+                if (echAddress != null) {
+                    const hexAddress: string = "0x" + echAddress.toString(16);
+                    let externalCode: string = "";
+                    if (state != null) {
+                        externalCode = state[hexAddress].code.bin;
+                        const codeToHash: Buffer = Buffer.from(externalCode, "hex");
+                        const codeHash = keccak256(codeToHash);
+                        stack.unshift(BigInt("0x" + codeHash.toString("hex")));
+                    } else {
+                        stack.unshift(0n);
+                    }
+                    break;
+                }
             case opcode == op.COINBASE:
                 stack.unshift(BigInt(block.coinbase));
                 break;
