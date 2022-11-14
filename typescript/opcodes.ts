@@ -65,6 +65,11 @@ const opcodes = {
     DUP16: 0x8f,
     SWAP1: 0x90,
     SWAP16: 0x9f,
+    LOG0: 0xa0,
+    LOG1: 0xa1,
+    LOG2: 0xa2,
+    LOG3: 0xa3,
+    LOG4: 0xa4,
 };
 
 export default opcodes;

@@ -37,6 +37,11 @@ export default function evm(code: Uint8Array, tx: any, block: any, state: any) {
     let stack: bigint[] = [];
     let memory = new Memory();
     let storage = {};
+    let logs: { address: string; data: string; topics: string[] } = {
+        address: "",
+        data: "",
+        topics: [],
+    };
     let pc = 0;
 
     loop1: while (pc < code.length) {
@@ -561,11 +566,87 @@ export default function evm(code: Uint8Array, tx: any, block: any, state: any) {
                 stack[0] = stack[swapIndex];
                 stack[swapIndex] = swapPlaceholder;
                 break;
+            case opcode == op.LOG0:
+                const log0Offset: bigint | undefined = stack.shift();
+                const log0Size: bigint | undefined = stack.shift();
+                if (log0Offset != null && log0Size != null) {
+                    logs.address = tx.to;
+                    logs.data = memory.read(Number(log0Offset), Number(log0Size));
+                }
+                break;
+            case opcode == op.LOG1:
+                const log1Offset: bigint | undefined = stack.shift();
+                const log1Size: bigint | undefined = stack.shift();
+                const log1topic0: bigint | undefined = stack.shift();
+                if (log1Offset != null && log1Size != null && log1topic0 != null) {
+                    logs.address = tx.to;
+                    logs.data = memory.read(Number(log1Offset), Number(log1Size));
+                    logs.topics.push("0x" + log1topic0.toString(16));
+                }
+                break;
+            case opcode == op.LOG2:
+                const log2Offset: bigint | undefined = stack.shift();
+                const log2Size: bigint | undefined = stack.shift();
+                const log2topic0: bigint | undefined = stack.shift();
+                const log2topic1: bigint | undefined = stack.shift();
+                if (
+                    log2Offset != null &&
+                    log2Size != null &&
+                    log2topic0 != null &&
+                    log2topic1 != null
+                ) {
+                    logs.address = tx.to;
+                    logs.data = memory.read(Number(log2Offset), Number(log2Size));
+                    logs.topics.push("0x" + log2topic0.toString(16));
+                    logs.topics.push("0x" + log2topic1.toString(16));
+                }
+                break;
+            case opcode == op.LOG3:
+                const log3Offset: bigint | undefined = stack.shift();
+                const log3Size: bigint | undefined = stack.shift();
+                const log3topic0: bigint | undefined = stack.shift();
+                const log3topic1: bigint | undefined = stack.shift();
+                const log3topic2: bigint | undefined = stack.shift();
+                if (
+                    log3Offset != null &&
+                    log3Size != null &&
+                    log3topic0 != null &&
+                    log3topic1 != null &&
+                    log3topic2 != null
+                ) {
+                    logs.address = tx.to;
+                    logs.data = memory.read(Number(log3Offset), Number(log3Size));
+                    logs.topics.push("0x" + log3topic0.toString(16));
+                    logs.topics.push("0x" + log3topic1.toString(16));
+                    logs.topics.push("0x" + log3topic2.toString(16));
+                }
+                break;
+            case opcode == op.LOG4:
+                const log4Offset: bigint | undefined = stack.shift();
+                const log4Size: bigint | undefined = stack.shift();
+                const log4topic0: bigint | undefined = stack.shift();
+                const log4topic1: bigint | undefined = stack.shift();
+                const log4topic2: bigint | undefined = stack.shift();
+                const log4topic3: bigint | undefined = stack.shift();
+                if (
+                    log4Offset != null &&
+                    log4Size != null &&
+                    log4topic0 != null &&
+                    log4topic1 != null &&
+                    log4topic2 != null &&
+                    log4topic3
+                ) {
+                    logs.address = tx.to;
+                    logs.data = memory.read(Number(log4Offset), Number(log4Size));
+                    logs.topics.push("0x" + log4topic0.toString(16));
+                    logs.topics.push("0x" + log4topic1.toString(16));
+                    logs.topics.push("0x" + log4topic2.toString(16));
+                    logs.topics.push("0x" + log4topic3.toString(16));
+                }
         }
         pc++;
     }
-
-    return { stack };
+    return { stack, logs };
 }
 
 class Memory {
