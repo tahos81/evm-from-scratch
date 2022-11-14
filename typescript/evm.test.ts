@@ -10,7 +10,7 @@ for (const t of tests as any) {
         const result = evm(hexStringToUint8Array(t.code.bin), t.tx, t.block, t.state);
 
         if (t.expect.stack) {
-            expect(result.stack).toEqual(t.expect.stack?.map((item) => BigInt(item)));
+            expect(result.stack).toEqual(t.expect.stack.map((item) => BigInt(item)));
         }
         if (t.expect.logs) {
             expect(result.logs).toEqual(t.expect.logs[0]);

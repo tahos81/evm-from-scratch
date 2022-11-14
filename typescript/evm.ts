@@ -45,6 +45,7 @@ export default function evm(code: Uint8Array, tx: any, block: any, state: any) {
     let success: boolean = true;
     let returnValue: string = "";
     let pc = 0;
+    let lastContextResultValue: string = "";
 
     loop1: while (pc < code.length) {
         const opcode = code[pc];
@@ -434,6 +435,20 @@ export default function evm(code: Uint8Array, tx: any, block: any, state: any) {
                     memory.store(Number(eccDestOffset), BigInt(externalCode), Number(eccSize));
                 }
                 break;
+            case opcode == op.RETURNDATASIZE:
+                stack.unshift(BigInt(lastContextResultValue.length / 2));
+                break;
+            case opcode == op.RETURNDATACOPY:
+                const rdcDestOffset: bigint | undefined = stack.shift();
+                const rdcOffset: bigint | undefined = stack.shift();
+                const rdcSize: bigint | undefined = stack.shift();
+                if (rdcDestOffset != null && rdcOffset != null && rdcSize != null) {
+                    const offset: number = Number(rdcOffset * 2n);
+                    const size: number = Number(rdcSize * 2n);
+                    const lcrSlice: string = lastContextResultValue.slice(offset);
+                    memory.store(Number(rdcDestOffset), BigInt("0x" + lcrSlice), size / 2);
+                }
+                break;
             case opcode == op.EXTCODEHASH:
                 const echAddress: bigint | undefined = stack.shift();
                 if (echAddress != null) {
@@ -645,6 +660,38 @@ export default function evm(code: Uint8Array, tx: any, block: any, state: any) {
                     logs.topics.push("0x" + log4topic2.toString(16));
                     logs.topics.push("0x" + log4topic3.toString(16));
                 }
+            case opcode == op.CALL:
+                const callGas: bigint | undefined = stack.shift();
+                const callAddress: bigint | undefined = stack.shift();
+                const callValue: bigint | undefined = stack.shift();
+                const callArgsOffset: bigint | undefined = stack.shift();
+                const callArgsSize: bigint | undefined = stack.shift();
+                const callRetOffset: bigint | undefined = stack.shift();
+                const callRetSize: bigint | undefined = stack.shift();
+                if (
+                    callGas != null &&
+                    callAddress != null &&
+                    callValue != null &&
+                    callArgsOffset != null &&
+                    callArgsSize != null &&
+                    callRetOffset != null &&
+                    callRetSize != null
+                ) {
+                    const hexAddress: string = "0x" + callAddress.toString(16);
+                    const codeToExecute: string = state[hexAddress].code.bin;
+                    if (tx != null) {
+                        tx.from = tx.to;
+                    }
+                    const result = evm(hexStringToUint8Array(codeToExecute), tx, block, state);
+                    result.success ? stack.unshift(1n) : stack.unshift(0n);
+                    memory.store(
+                        Number(callRetOffset),
+                        BigInt("0x" + result.returnValue),
+                        Number(callRetSize)
+                    );
+                    lastContextResultValue = result.returnValue;
+                }
+                break;
             case opcode == op.RETURN:
                 const returnOffset: bigint | undefined = stack.shift();
                 const returnSize: bigint | undefined = stack.shift();
@@ -652,6 +699,7 @@ export default function evm(code: Uint8Array, tx: any, block: any, state: any) {
                     const retval: string = memory.read(Number(returnOffset), Number(returnSize));
                     returnValue = retval;
                 }
+                break loop1;
             case opcode == op.REVERT:
                 const revertOffset: bigint | undefined = stack.shift();
                 const revertSize: bigint | undefined = stack.shift();
@@ -660,6 +708,7 @@ export default function evm(code: Uint8Array, tx: any, block: any, state: any) {
                     returnValue = retval;
                     success = false;
                 }
+                break loop1;
         }
         pc++;
     }

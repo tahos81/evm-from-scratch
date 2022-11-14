@@ -38,6 +38,8 @@ const opcodes = {
     GASPRICE: 0x3a,
     EXTCODESIZE: 0x3b,
     EXTCODECOPY: 0x3c,
+    RETURNDATASIZE: 0x3d,
+    RETURNDATACOPY: 0x3e,
     EXTCODEHASH: 0x3f,
     COINBASE: 0x41,
     TIMESTAMP: 0x42,
@@ -70,6 +72,7 @@ const opcodes = {
     LOG2: 0xa2,
     LOG3: 0xa3,
     LOG4: 0xa4,
+    CALL: 0xf1,
     RETURN: 0xf3,
     REVERT: 0xfd,
 };
