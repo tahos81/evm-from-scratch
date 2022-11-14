@@ -42,6 +42,8 @@ export default function evm(code: Uint8Array, tx: any, block: any, state: any) {
         data: "",
         topics: [],
     };
+    let success: boolean = true;
+    let returnValue: string = "";
     let pc = 0;
 
     loop1: while (pc < code.length) {
@@ -643,10 +645,25 @@ export default function evm(code: Uint8Array, tx: any, block: any, state: any) {
                     logs.topics.push("0x" + log4topic2.toString(16));
                     logs.topics.push("0x" + log4topic3.toString(16));
                 }
+            case opcode == op.RETURN:
+                const returnOffset: bigint | undefined = stack.shift();
+                const returnSize: bigint | undefined = stack.shift();
+                if (returnOffset != null && returnSize != null) {
+                    const retval: string = memory.read(Number(returnOffset), Number(returnSize));
+                    returnValue = retval;
+                }
+            case opcode == op.REVERT:
+                const revertOffset: bigint | undefined = stack.shift();
+                const revertSize: bigint | undefined = stack.shift();
+                if (revertOffset != null && revertSize != null) {
+                    const retval: string = memory.read(Number(revertOffset), Number(revertSize));
+                    returnValue = retval;
+                    success = false;
+                }
         }
         pc++;
     }
-    return { stack, logs };
+    return { stack, logs, returnValue, success };
 }
 
 class Memory {

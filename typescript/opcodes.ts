@@ -70,6 +70,8 @@ const opcodes = {
     LOG2: 0xa2,
     LOG3: 0xa3,
     LOG4: 0xa4,
+    RETURN: 0xf3,
+    REVERT: 0xfd,
 };
 
 export default opcodes;

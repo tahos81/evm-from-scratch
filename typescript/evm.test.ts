@@ -15,6 +15,12 @@ for (const t of tests as any) {
         if (t.expect.logs) {
             expect(result.logs).toEqual(t.expect.logs[0]);
         }
+        if (t.expect.return) {
+            expect(result.returnValue).toEqual(t.expect.return);
+        }
+        if (t.expect.success) {
+            expect(result.success).toEqual(t.expect.success);
+        }
     });
 }
 
