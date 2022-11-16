@@ -19,7 +19,7 @@ const UINT256_MAX: bigint = 0xffffffffffffffffffffffffffffffffffffffffffffffffff
 const ZERO_ADDRESS: string = "0x00000000000000000000";
 const DEAD_ADDRESS: string = "0xdead00000000000000000000000000000000dead";
 const CREATED_ADDRESS: string = "0xbeefbeefbeefbeefbeef";
-const BANNED_OPS: string[] = ["a0", "a1", "a2", "a3", "a4", "55"];
+const BANNED_OPS: string[] = ["a0", "a1", "a2", "a3", "a4", "55"]; //it's not complete
 
 function flip(binary: string) {
     let inverted: string = "";
