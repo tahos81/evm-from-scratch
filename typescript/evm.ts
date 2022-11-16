@@ -16,6 +16,10 @@ import op from "./opcodes";
 import keccak256 from "keccak256";
 
 const UINT256_MAX: bigint = 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffn;
+const ZERO_ADDRESS: string = "0x00000000000000000000";
+const DEAD_ADDRESS: string = "0xdead00000000000000000000000000000000dead";
+const CREATED_ADDRESS: string = "0xbeefbeefbeefbeefbeef";
+const BANNED_OPS: string[] = ["a0", "a1", "a2", "a3", "a4", "55"];
 
 function flip(binary: string) {
     let inverted: string = "";
@@ -36,7 +40,31 @@ function hexStringToUint8Array(hexString: string) {
 export default function evm(code: Uint8Array, tx: any, block: any, state: any) {
     let stack: bigint[] = [];
     let memory = new Memory();
-    let storage = {};
+
+    interface WorldState {
+        [address: string]: AccountState;
+    }
+
+    interface AccountState {
+        code: { bin: string };
+        balance: string;
+        storage: {};
+    }
+
+    const emptyAccountState: AccountState = { code: { bin: "" }, balance: "", storage: {} };
+
+    let worldState: WorldState = {};
+
+    if (state) {
+        worldState = state;
+    } else {
+        worldState[ZERO_ADDRESS] = emptyAccountState;
+    }
+
+    if (worldState[tx?.to] == null) {
+        worldState[tx?.to] = emptyAccountState;
+    }
+
     let logs: { address: string; data: string; topics: string[] } = {
         address: "",
         data: "",
@@ -44,8 +72,8 @@ export default function evm(code: Uint8Array, tx: any, block: any, state: any) {
     };
     let success: boolean = true;
     let returnValue: string = "";
-    let pc = 0;
     let lastContextResultValue: string = "";
+    let pc = 0;
 
     loop1: while (pc < code.length) {
         const opcode = code[pc];
@@ -322,6 +350,30 @@ export default function evm(code: Uint8Array, tx: any, block: any, state: any) {
                     stack.unshift(shrResult);
                 }
                 break;
+            case opcode == op.SAR:
+                const sarShift: bigint | undefined = stack.shift();
+                let sarValue: bigint | undefined = stack.shift();
+                if (sarShift != null && sarValue != null) {
+                    let sarString: string = sarValue.toString(16).padStart(64, "0");
+                    if (sarShift > 255) {
+                        if (sarString[0] == "f") {
+                            stack.unshift(UINT256_MAX);
+                            break;
+                        } else {
+                            stack.unshift(0n);
+                            break;
+                        }
+                    }
+                    let sarResult: bigint = sarValue >> sarShift;
+                    if (sarResult.toString(16).length < 64) {
+                        if (sarResult.toString(16)[0] == "f") {
+                            let sarString: string = "f" + sarResult.toString(16);
+                            sarResult = BigInt("0x" + sarString);
+                        }
+                    }
+                    stack.unshift(sarResult);
+                }
+                break;
             case opcode == op.ADDRESS:
                 stack.unshift(BigInt(tx.to));
                 break;
@@ -329,8 +381,8 @@ export default function evm(code: Uint8Array, tx: any, block: any, state: any) {
                 const balanceAddress: bigint | undefined = stack.shift();
                 if (balanceAddress != null) {
                     const hexAddress = "0x" + balanceAddress.toString(16);
-                    if (state != null) {
-                        stack.unshift(BigInt(state[hexAddress].balance));
+                    if (worldState[hexAddress]) {
+                        stack.unshift(BigInt(worldState[hexAddress].balance));
                     } else {
                         stack.unshift(0n);
                     }
@@ -425,8 +477,8 @@ export default function evm(code: Uint8Array, tx: any, block: any, state: any) {
                 ) {
                     const hexAddress: string = "0x" + eccAddress.toString(16);
                     let externalCode: string = "";
-                    if (state != null) {
-                        externalCode = state[hexAddress].code.bin;
+                    if (worldState[hexAddress] != null) {
+                        externalCode = worldState[hexAddress].code.bin;
                         let offset: number = Number(eccOffset * 2n);
                         let size: number = Number(eccSize * 2n);
                         externalCode = externalCode.slice(offset, offset + Number(eccSize * 2n));
@@ -516,10 +568,18 @@ export default function evm(code: Uint8Array, tx: any, block: any, state: any) {
             case opcode == op.SLOAD:
                 const loadKey: bigint | undefined = stack.shift();
                 if (loadKey != null) {
-                    if (storage[Number(loadKey)]) {
-                        stack.unshift(storage[Number(loadKey)]);
+                    if (tx != null) {
+                        if (worldState[tx.to].storage[Number(loadKey)]) {
+                            stack.unshift(worldState[tx.to].storage[Number(loadKey)]);
+                        } else {
+                            stack.unshift(0n);
+                        }
                     } else {
-                        stack.unshift(0n);
+                        if (worldState[ZERO_ADDRESS].storage[Number(loadKey)]) {
+                            stack.unshift(worldState[ZERO_ADDRESS].storage[Number(loadKey)]);
+                        } else {
+                            stack.unshift(0n);
+                        }
                     }
                 }
                 break;
@@ -527,7 +587,11 @@ export default function evm(code: Uint8Array, tx: any, block: any, state: any) {
                 const storeKey: bigint | undefined = stack.shift();
                 const storeValue: bigint | undefined = stack.shift();
                 if (storeKey != null && storeValue != null) {
-                    storage[Number(storeKey)] = storeValue;
+                    if (tx != null) {
+                        worldState[tx.to].storage[Number(storeKey)] = storeValue;
+                    } else {
+                        worldState[ZERO_ADDRESS].storage[Number(storeKey)] = storeValue;
+                    }
                 }
                 break;
             case opcode == op.JUMP:
@@ -660,6 +724,38 @@ export default function evm(code: Uint8Array, tx: any, block: any, state: any) {
                     logs.topics.push("0x" + log4topic2.toString(16));
                     logs.topics.push("0x" + log4topic3.toString(16));
                 }
+            case opcode == op.CREATE:
+                const createValue: bigint | undefined = stack.shift();
+                const createOffset: bigint | undefined = stack.shift();
+                const createSize: bigint | undefined = stack.shift();
+                if (createValue != null && createOffset != null && createSize != null) {
+                    const initialisationCode: string = memory.read(
+                        Number(createOffset),
+                        Number(createSize)
+                    );
+                    if (tx != null) {
+                        tx.from = tx.to;
+                    }
+                    const result = evm(
+                        hexStringToUint8Array(initialisationCode),
+                        tx,
+                        block,
+                        worldState
+                    );
+                    if (!result.success) {
+                        stack.unshift(0n);
+                        break loop1;
+                    }
+                    worldState[CREATED_ADDRESS] = emptyAccountState;
+                    if (result.returnValue) {
+                        worldState[CREATED_ADDRESS].code.bin = result.returnValue;
+                    }
+                    worldState[CREATED_ADDRESS].balance = (
+                        BigInt(worldState[CREATED_ADDRESS].balance) + createValue
+                    ).toString(16);
+                    stack.unshift(BigInt(CREATED_ADDRESS));
+                }
+                break;
             case opcode == op.CALL:
                 const callGas: bigint | undefined = stack.shift();
                 const callAddress: bigint | undefined = stack.shift();
@@ -681,14 +777,17 @@ export default function evm(code: Uint8Array, tx: any, block: any, state: any) {
                     const codeToExecute: string = state[hexAddress].code.bin;
                     if (tx != null) {
                         tx.from = tx.to;
+                        tx.to = hexAddress;
                     }
                     const result = evm(hexStringToUint8Array(codeToExecute), tx, block, state);
                     result.success ? stack.unshift(1n) : stack.unshift(0n);
-                    memory.store(
-                        Number(callRetOffset),
-                        BigInt("0x" + result.returnValue),
-                        Number(callRetSize)
-                    );
+                    if (result.returnValue) {
+                        memory.store(
+                            Number(callRetOffset),
+                            BigInt("0x" + result.returnValue),
+                            Number(callRetSize)
+                        );
+                    }
                     lastContextResultValue = result.returnValue;
                 }
                 break;
@@ -700,6 +799,73 @@ export default function evm(code: Uint8Array, tx: any, block: any, state: any) {
                     returnValue = retval;
                 }
                 break loop1;
+            case opcode == op.DELEGATECALL:
+                const dCallGas: bigint | undefined = stack.shift();
+                const dCallAddress: bigint | undefined = stack.shift();
+                const dCallArgsOffset: bigint | undefined = stack.shift();
+                const dCallArgsSize: bigint | undefined = stack.shift();
+                const dCallRetOffset: bigint | undefined = stack.shift();
+                const dCallRetSize: bigint | undefined = stack.shift();
+                if (
+                    dCallGas != null &&
+                    dCallAddress != null &&
+                    dCallArgsOffset != null &&
+                    dCallArgsSize != null &&
+                    dCallRetOffset != null &&
+                    dCallRetSize != null
+                ) {
+                    const hexAddress: string = "0x" + dCallAddress.toString(16);
+                    const codeToExecute: string = state[hexAddress].code.bin;
+                    const result = evm(hexStringToUint8Array(codeToExecute), tx, block, worldState);
+                    result.success ? stack.unshift(1n) : stack.unshift(0n);
+                    if (result.returnValue) {
+                        memory.store(
+                            Number(dCallRetOffset),
+                            BigInt("0x" + result.returnValue),
+                            Number(dCallRetSize)
+                        );
+                    }
+                    lastContextResultValue = result.returnValue;
+                }
+                break;
+            case opcode == op.STATICCALL:
+                const sCallGas: bigint | undefined = stack.shift();
+                const sCallAddress: bigint | undefined = stack.shift();
+                const sCallArgsOffset: bigint | undefined = stack.shift();
+                const sCallArgsSize: bigint | undefined = stack.shift();
+                const sCallRetOffset: bigint | undefined = stack.shift();
+                const sCallRetSize: bigint | undefined = stack.shift();
+                if (
+                    sCallGas != null &&
+                    sCallAddress != null &&
+                    sCallArgsOffset != null &&
+                    sCallArgsSize != null &&
+                    sCallRetOffset != null &&
+                    sCallRetSize != null
+                ) {
+                    const hexAddress: string = "0x" + sCallAddress.toString(16);
+                    const codeToExecute: string = state[hexAddress].code.bin;
+                    for (let i = 0; i < BANNED_OPS.length; i++) {
+                        if (codeToExecute.includes(BANNED_OPS[i])) {
+                            stack.unshift(0n);
+                            break loop1;
+                        }
+                    }
+                    if (tx != null) {
+                        tx.from = tx.to;
+                    }
+                    const result = evm(hexStringToUint8Array(codeToExecute), tx, block, worldState);
+                    result.success ? stack.unshift(1n) : stack.unshift(0n);
+                    if (result.returnValue) {
+                        memory.store(
+                            Number(sCallRetOffset),
+                            BigInt("0x" + result.returnValue),
+                            Number(sCallRetSize)
+                        );
+                    }
+                    lastContextResultValue = result.returnValue;
+                }
+                break;
             case opcode == op.REVERT:
                 const revertOffset: bigint | undefined = stack.shift();
                 const revertSize: bigint | undefined = stack.shift();
@@ -709,6 +875,16 @@ export default function evm(code: Uint8Array, tx: any, block: any, state: any) {
                     success = false;
                 }
                 break loop1;
+            case opcode == op.SELFDESTRUCT:
+                const receiverAddress: bigint | undefined = stack.shift();
+                if (receiverAddress != null) {
+                    const hexAdddres: string = "0x" + receiverAddress.toString(16);
+                    worldState[DEAD_ADDRESS].code.bin = "";
+                    const balanceToSend: string = worldState[DEAD_ADDRESS].balance;
+                    worldState[hexAdddres] = emptyAccountState;
+                    worldState[hexAdddres].balance = balanceToSend;
+                }
+                break;
         }
         pc++;
     }

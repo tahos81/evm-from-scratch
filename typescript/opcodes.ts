@@ -25,6 +25,7 @@ const opcodes = {
     BYTE: 0x1a,
     SHL: 0x1b,
     SHR: 0x1c,
+    SAR: 0x1d,
     ADDRESS: 0x30,
     BALANCE: 0x31,
     ORIGIN: 0x32,
@@ -72,9 +73,13 @@ const opcodes = {
     LOG2: 0xa2,
     LOG3: 0xa3,
     LOG4: 0xa4,
+    CREATE: 0xf0,
     CALL: 0xf1,
     RETURN: 0xf3,
+    DELEGATECALL: 0xf4,
+    STATICCALL: 0xfa,
     REVERT: 0xfd,
+    SELFDESTRUCT: 0xff,
 };
 
 export default opcodes;
